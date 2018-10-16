@@ -12,8 +12,9 @@ RSpec.describe Capybara::Selector::RegexpDisassembler do
 
   it 'handles escaped characters' do
     verify_strings(
-      /abc\\def/ => %w[abc def],
-      /\nabc/ => %w[abc],
+      /abc\\def/ => %w[abc\def],
+      /abc\.def/ => %w[abc.def],
+      /\nabc/ => ["\nabc"],
       %r{abc/} => %w[abc/]
     )
   end

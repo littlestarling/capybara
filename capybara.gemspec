@@ -30,6 +30,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency('nokogiri', ['~> 1.8'])
   s.add_runtime_dependency('rack', ['>= 1.6.0'])
   s.add_runtime_dependency('rack-test', ['>= 0.6.3'])
+  s.add_runtime_dependency('regexp_parser', ['~>1.2'])
   s.add_runtime_dependency('xpath', ['~>3.2'])
 
   s.add_development_dependency('cucumber', ['>= 2.3.0'])
@@ -38,6 +39,7 @@ Gem::Specification.new do |s|
   s.add_development_dependency('launchy', ['>= 2.0.4'])
   s.add_development_dependency('minitest')
   s.add_development_dependency('puma')
+  s.add_development_dependency('byebug')
   s.add_development_dependency('rake')
   s.add_development_dependency('rspec', ['>= 3.4.0'])
   s.add_development_dependency('selenium-webdriver', ['~>3.5'])

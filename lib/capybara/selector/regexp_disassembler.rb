@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+require 'regexp_parser'
 
 module Capybara
   class Selector
@@ -7,31 +8,73 @@ module Capybara
       def initialize(regexp)
         @regexp = regexp
         @regexp_source = regexp.source
+        @parser_regexp = Regexp::Parser.parse(regexp)
+      end
+
+      def visit(exp, &block)
+        exp.each_with_index do |exp, index|
+          if exp.terminal?
+            block.call(:visit, exp, index)
+          else
+            res = block.call(:enter, exp, index)
+            res.times { visit(exp, &block) }
+            block.call(:exit, exp, index)
+          end
+        end
       end
 
       def substrings
-        @substrings ||= begin
-          source = @regexp_source.dup
-          source.gsub!(/\\[^pgk]/, '.') # replace escaped characters with wildcard
-          source.gsub!(/\\[gk](?:<[^>]*>)?/, '.') # replace sub expressions and back references with wildcard
-          source.gsub!(/\\p\{[[:alpha:]]+\}?/, '.') # replace character properties with wildcard
-          source.gsub!(/\[\[:[a-z]+:\]\]/, '.') # replace posix classes with wildcard
-          while source.gsub!(/\[(?:[^\[\]]+)\]/, '.'); end # replace character classes with wildcard
-          source.gsub!(/\(\?<?[=!][^)]*\)/, '') # remove lookahead/lookbehind assertions
-          source.gsub!(/\(\?(?:<[^>]+>|>|:)/, '(') # replace named, atomic, and non-matching groups with unnamed matching groups
-
-          while source.gsub!(GROUP_REGEX) { |_m| simplify_group(Regexp.last_match) }; end
-          source.gsub!(/.[*?]\??/, '.') # replace optional character with wildcard
-          source.gsub!(/(.)\+\??/, '\1.') # replace one or more with character plus wildcard
-          source.gsub!(/(?<char>.)#{COUNTED_REP_REGEX.source}/) do |_m| # repeat counted characters
-            (Regexp.last_match[:char] * Regexp.last_match[:min_rep].to_i).tap { |str| str << '.' if Regexp.last_match[:max_rep] }
+        @strings = [+'']
+        visit(@parser_regexp) do |event, exp|
+          case event
+          when :enter
+            case exp.type
+            when :meta, :set
+              @strings.push(+'')
+              0
+            when :group
+              (exp.quantifier&.min || 1).tap do |min|
+                @strings.push(+'') if min.zero?
+              end
+            end
+          when :exit
+            @strings.push(+'') if (exp.quantifier&.max != exp.quantifier&.min)
+          when :visit
+            case exp.type
+            when :literal
+              @strings.last << exp.text * (exp.quantifier&.min || 1)
+            when :escape
+              @strings.last << exp.char * (exp.quantifier&.min || 1)
+            when :meta, :type, :property, :backref
+              @strings.push(+'')
+            end
+            @strings.push(+'') unless exp.quantifier&.max == exp.quantifier&.min
           end
-          return [] if source.include?('|') # can't handle alternation here
-
-          strs = source.match(/\A\^?(.*?)\$?\Z/).captures[0].split('.').reject(&:empty?).uniq
-          strs = strs.map(&:upcase) if @regexp.casefold?
-          strs
         end
+        @strings.reject(&:empty?).uniq
+
+        # @substrings ||= begin
+        #   source = @regexp_source.dup
+        #   source.gsub!(/\\[^pgk]/, '.') # replace escaped characters with wildcard
+        #   source.gsub!(/\\[gk](?:<[^>]*>)?/, '.') # replace sub expressions and back references with wildcard
+        #   source.gsub!(/\\p\{[[:alpha:]]+\}?/, '.') # replace character properties with wildcard
+        #   source.gsub!(/\[\[:[a-z]+:\]\]/, '.') # replace posix classes with wildcard
+        #   while source.gsub!(/\[(?:[^\[\]]+)\]/, '.'); end # replace character classes with wildcard
+        #   source.gsub!(/\(\?<?[=!][^)]*\)/, '') # remove lookahead/lookbehind assertions
+        #   source.gsub!(/\(\?(?:<[^>]+>|>|:)/, '(') # replace named, atomic, and non-matching groups with unnamed matching groups
+        #
+        #   while source.gsub!(GROUP_REGEX) { |_m| simplify_group(Regexp.last_match) }; end
+        #   source.gsub!(/.[*?]\??/, '.') # replace optional character with wildcard
+        #   source.gsub!(/(.)\+\??/, '\1.') # replace one or more with character plus wildcard
+        #   source.gsub!(/(?<char>.)#{COUNTED_REP_REGEX.source}/) do |_m| # repeat counted characters
+        #     (Regexp.last_match[:char] * Regexp.last_match[:min_rep].to_i).tap { |str| str << '.' if Regexp.last_match[:max_rep] }
+        #   end
+        #   return [] if source.include?('|') # can't handle alternation here
+        #
+        #   strs = source.match(/\A\^?(.*?)\$?\Z/).captures[0].split('.').reject(&:empty?).uniq
+        #   strs = strs.map(&:upcase) if @regexp.casefold?
+        #   strs
+        # end
       end
 
     private
